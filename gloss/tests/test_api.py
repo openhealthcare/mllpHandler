@@ -14,6 +14,42 @@ from gloss.information_source import InformationSource
 NOPE = '{"status": "error", "data": "We\'ve not implemented this yet - sorry"}'
 
 
+class JsonApiTestCase(GlossTestCase):
+
+    def test_wrapper_logging(self):
+        with patch.object(api.app.logger, "info") as info:
+            some_route = MagicMock(name="mock route")
+            some_route.__name__ = "mock_route"
+            some_route.return_value = {"some": "result"}
+            some_fun = api.json_api("/somewhere")(some_route)
+            some_fun("hello")
+            self.assertTrue(info.called)
+            log_call_args = info.call_args[0][0]
+            self.assertIn("/somewhere", log_call_args)
+
+
+@patch("gloss.api.get_information_source")
+class ResultQueryTestCase(GlossTestCase):
+    def test_result_query(self, get_information_source):
+        get_information_source.return_value = InformationSource()
+        self.session.add(self.create_patient('555-yeppers', 'uclh'))
+        self.session.add(self.get_result('555-yeppers', 'uclh'))
+        resp = api.result_query('555-yeppers')
+        data = json.loads(resp.data)
+        self.assertEqual(data["status"], 'success')
+        self.assertEqual(data["hospital_number"], '555-yeppers')
+        expected_message = self.get_result_dict()
+        expected_message["external_identifier"] = "None.ELU"
+        self.assertEqual(data["messages"]["result"][0], expected_message)
+
+    def test_not_found(self, get_information_source):
+        get_information_source.return_value = InformationSource()
+        self.mock_mllp_send.return_value = test_messages.PATIENT_NOT_FOUND
+        msg = '{"status": "error", "data": "We can\'t find any patients with that identifier"}'
+        resp = api.result_query('not-found')
+        self.assertEqual(msg, resp.data)
+
+
 @patch("gloss.api.get_information_source")
 class PatientQueryTestCase(GlossTestCase):
     def test_not_found(self, get_information_source):

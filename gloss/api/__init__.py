@@ -5,6 +5,7 @@ import functools
 import json
 import sys
 import logging
+from time import time
 from flask import Flask, Response, request, render_template
 from hl7.client import MLLPClient
 from gloss.serialisers.opal import OpalJSONSerialiser
@@ -29,6 +30,7 @@ def json_api(route, with_session=True, **kwargs):
         @functools.wraps(fn)
         def as_json(*args, **kwargs):
             issuing_source = settings.ISSUING_SOURCE
+            ts = time()
             try:
                 if with_session:
                     with models.session_scope() as session:
@@ -37,7 +39,7 @@ def json_api(route, with_session=True, **kwargs):
                     data = fn(issuing_source, *args, **kwargs)
 
                 data["status"] = "success"
-                app.logger.critical(data)
+                app.logger.info("%s in %2.4fs" % (route, ts))
                 return Response(json.dumps(data, cls=OpalJSONSerialiser))
 
             except exceptions.APIError as err:
@@ -57,6 +59,16 @@ def json_api(route, with_session=True, **kwargs):
 @json_api('/api/patient/<identifier>', with_session=False)
 def patient_query(issuing_source, identifier):
     result = get_information_source().patient_information(
+        issuing_source, identifier
+    )
+    return result.to_dict()
+
+
+@json_api('/api/result/<identifier>', with_session=False)
+def result_query(issuing_source, identifier):
+    """ Returns all results for a patient
+    """
+    result = get_information_source().result_information(
         issuing_source, identifier
     )
     return result.to_dict()
